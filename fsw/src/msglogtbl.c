@@ -45,7 +45,7 @@
 /** Local File Function Prototypes **/
 /************************************/
 
-static boolean LoadJsonData(size_t JsonFileLen);
+static bool LoadJsonData(size_t JsonFileLen);
 
 
 /**********************/
@@ -60,10 +60,10 @@ static CJSON_Obj_t JsonTblObjs[] = {
 
    /* Table Data Address        Table Data Length             Updated, Data Type,   core-json query string, length of query string(exclude '\0') */
    
-   { TblData.File.PathBaseName, OS_MAX_PATH_LEN,              FALSE,   JSONString, { "file.path-base-name", (sizeof("file.path-base-name")-1)} },
-   { TblData.File.Extension,    MSGLOGTBL_FILE_EXT_MAX_LEN,   FALSE,   JSONString, { "file.extension",      (sizeof("file.extension")-1)}      },
-   { &TblData.File.EntryCnt,    sizeof(TblData.File.EntryCnt),FALSE,   JSONNumber, { "file.entry-cnt",      (sizeof("file.entry-cnt")-1)}      },
-   { &TblData.PlaybkDelay,      sizeof(TblData.PlaybkDelay),  FALSE,   JSONNumber, { "playbk-delay",        (sizeof("playbk-delay")-1)}        }
+   { TblData.File.PathBaseName, OS_MAX_PATH_LEN,              false,   JSONString, { "file.path-base-name", (sizeof("file.path-base-name")-1)} },
+   { TblData.File.Extension,    MSGLOGTBL_FILE_EXT_MAX_LEN,   false,   JSONString, { "file.extension",      (sizeof("file.extension")-1)}      },
+   { &TblData.File.EntryCnt,    sizeof(TblData.File.EntryCnt),false,   JSONNumber, { "file.entry-cnt",      (sizeof("file.entry-cnt")-1)}      },
+   { &TblData.PlaybkDelay,      sizeof(TblData.PlaybkDelay),  false,   JSONNumber, { "playbk-delay",        (sizeof("playbk-delay")-1)}        }
    
 };
 
@@ -75,7 +75,7 @@ static CJSON_Obj_t JsonTblObjs[] = {
 **    1. This must be called prior to any other functions
 **
 */
-void MSGLOGTBL_Constructor(MSGLOGTBL_Class_t* MsgLogTblPtr, INITBL_Class_t* IniTbl)
+void MSGLOGTBL_Constructor(MSGLOGTBL_Class_t* MsgLogTblPtr, const INITBL_Class_t* IniTbl)
 {
 
    MsgLogTbl = MsgLogTblPtr;
@@ -109,17 +109,17 @@ void MSGLOGTBL_ResetStatus(void)
 **  2. This could migrate into table manager but I think I'll keep it here so
 **     user's can add table processing code if needed.
 */
-boolean MSGLOGTBL_LoadCmd(TBLMGR_Tbl_t* Tbl, uint8 LoadType, const char* Filename)
+bool MSGLOGTBL_LoadCmd(TBLMGR_Tbl_t* Tbl, uint8 LoadType, const char* Filename)
 {
 
-   boolean  RetStatus = FALSE;
+   bool  RetStatus = false;
 
    if (CJSON_ProcessFile(Filename, MsgLogTbl->JsonBuf, MSGLOGTBL_JSON_FILE_MAX_CHAR, LoadJsonData))
    {
       
-      MsgLogTbl->Loaded = TRUE;
+      MsgLogTbl->Loaded = true;
       MsgLogTbl->LastLoadStatus = TBLMGR_STATUS_VALID;
-      RetStatus = TRUE;
+      RetStatus = true;
    
    }
    else
@@ -147,20 +147,22 @@ boolean MSGLOGTBL_LoadCmd(TBLMGR_Tbl_t* Tbl, uint8 LoadType, const char* Filenam
 **  5. Creates a new dump file, overwriting anything that may have existed
 **     previously
 */
-boolean MSGLOGTBL_DumpCmd(TBLMGR_Tbl_t* Tbl, uint8 DumpType, const char* Filename)
+bool MSGLOGTBL_DumpCmd(TBLMGR_Tbl_t* Tbl, uint8 DumpType, const char* Filename)
 {
 
-   boolean  RetStatus = FALSE;
-   int32    FileHandle;
-   char     DumpRecord[256];
-   char     SysTimeStr[256];
+   bool       RetStatus = false;
+   int32      SysStatus;
+   osal_id_t  FileHandle;
+   os_err_name_t OsErrStr;
+   char DumpRecord[256];
+   char SysTimeStr[128];
 
    
-   FileHandle = OS_creat(Filename, OS_WRITE_ONLY);
+   SysStatus = OS_OpenCreate(&FileHandle, Filename, OS_FILE_FLAG_CREATE, OS_READ_WRITE);
 
-   if (FileHandle >= OS_FS_SUCCESS)
+   if (SysStatus == OS_SUCCESS)
    {
-
+ 
       sprintf(DumpRecord,"{\n   \"app-name\": \"%s\",\n   \"tbl-name\": \"Message Log\",\n",MsgLogTbl->AppName);
       OS_write(FileHandle,DumpRecord,strlen(DumpRecord));
 
@@ -185,14 +187,15 @@ boolean MSGLOGTBL_DumpCmd(TBLMGR_Tbl_t* Tbl, uint8 DumpType, const char* Filenam
 
       OS_close(FileHandle);
 
-      RetStatus = TRUE;
+      RetStatus = true;
 
    } /* End if file create */
    else
    {
-
-      CFE_EVS_SendEvent(MSGLOGTBL_DUMP_ERR_EID, CFE_EVS_ERROR,
-                        "Error creating dump file '%s', Status=0x%08X", Filename, FileHandle);
+      OS_GetErrorName(SysStatus, &OsErrStr);
+      CFE_EVS_SendEvent(MSGLOGTBL_DUMP_ERR_EID, CFE_EVS_EventType_ERROR,
+                        "Error creating dump file '%s', status=%s",
+                        Filename, OsErrStr);
    
    } /* End if file create error */
 
@@ -207,11 +210,11 @@ boolean MSGLOGTBL_DumpCmd(TBLMGR_Tbl_t* Tbl, uint8 DumpType, const char* Filenam
 ** Notes:
 **  1. See file prologue for full/partial table load scenarios
 */
-static boolean LoadJsonData(size_t JsonFileLen)
+static bool LoadJsonData(size_t JsonFileLen)
 {
 
-   boolean      RetStatus = FALSE;
-   size_t       ObjLoadCnt;
+   bool      RetStatus = false;
+   size_t    ObjLoadCnt;
 
 
    MsgLogTbl->JsonFileLen = JsonFileLen;
@@ -229,7 +232,7 @@ static boolean LoadJsonData(size_t JsonFileLen)
    if (!MsgLogTbl->Loaded && (ObjLoadCnt != MsgLogTbl->JsonObjCnt))
    {
 
-      CFE_EVS_SendEvent(MSGLOGTBL_LOAD_ERR_EID, CFE_EVS_ERROR, 
+      CFE_EVS_SendEvent(MSGLOGTBL_LOAD_ERR_EID, CFE_EVS_EventType_ERROR, 
                         "Table has never been loaded and new table only contains %ld of %ld data objects",
                         ObjLoadCnt, MsgLogTbl->JsonObjCnt);
    
@@ -239,7 +242,7 @@ static boolean LoadJsonData(size_t JsonFileLen)
    
       memcpy(&MsgLogTbl->Data,&TblData, sizeof(MSGLOGTBL_Data_t));
       MsgLogTbl->LastLoadCnt = ObjLoadCnt;
-      RetStatus = TRUE;
+      RetStatus = true;
       
    }
    

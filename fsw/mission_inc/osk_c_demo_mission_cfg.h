@@ -4,7 +4,7 @@
 ** Notes:
 **   1. Compile-time configurations that are applied to all platform
 **      deployments of this app for a mission.
-**   2. These definitions should minimal and only contain parameters that
+**   2. These definitions should be minimal and only contain parameters that
 **      need to be configurable for a mission and that must be defined at
 **      compile time. Use osk_c_demo_platform_cfg.h for compile-time
 **      parameters that can be tuned for each platform deployment. Use

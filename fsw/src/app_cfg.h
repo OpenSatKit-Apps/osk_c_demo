@@ -41,9 +41,10 @@
 **
 ** 1.0 - Initial version
 ** 3.0 - New baseline for OSK app repo compatible with cFE Bootes
+** 4.0 - New baseline for OSK app repo compatible with cFE Caelum
 */
 
-#define  OSK_C_DEMO_MAJOR_VER   3
+#define  OSK_C_DEMO_MAJOR_VER   4
 #define  OSK_C_DEMO_MINOR_VER   0
 
 

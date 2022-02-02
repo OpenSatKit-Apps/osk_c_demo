@@ -80,8 +80,9 @@ void MSGLOG_Constructor(MSGLOG_Class_t*  MsgLogPtr, INITBL_Class_t* IniTbl)
    CFE_SB_CreatePipe(&MsgLog->MsgPipe, INITBL_GetIntConfig(MsgLog->IniTbl, CFG_MSGLOG_PIPE_DEPTH), 
                      INITBL_GetStrConfig(MsgLog->IniTbl, CFG_MSGLOG_PIPE_NAME));  
 
-   CFE_SB_InitMsg(&MsgLog->PlaybkPkt, (CFE_SB_MsgId_t)INITBL_GetIntConfig(MsgLog->IniTbl,
-                  CFG_PLAYBK_TLM_MID), sizeof(MSGLOG_PlaybkPkt_t), TRUE);
+   CFE_MSG_Init(CFE_MSG_PTR(MsgLog->PlaybkPkt.TlmHeader), 
+                CFE_SB_ValueToMsgId(INITBL_GetIntConfig(MsgLog->IniTbl,CFG_PLAYBK_TLM_MID)),
+                sizeof(MSGLOG_PlaybkPkt_t));
    
    MSGLOGTBL_Constructor(TBL_OBJ, IniTbl);
 
@@ -108,11 +109,11 @@ void MSGLOG_ResetStatus()
 **      mechanism for the parent app to periodically call a child task function.
 **
 */
-boolean MSGLOG_RunChildFuncCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
+bool MSGLOG_RunChildFuncCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr)
 {
    
    
-   CFE_EVS_SendEvent (MSGLOG_PERIODIC_CMD_EID, CFE_EVS_DEBUG, 
+   CFE_EVS_SendEvent (MSGLOG_PERIODIC_CMD_EID, CFE_EVS_EventType_DEBUG, 
                       "Run child function command called");
 
    if (MsgLog->LogEna)
@@ -136,7 +137,7 @@ boolean MSGLOG_RunChildFuncCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
    
    } /* End if playback enabled */
    
-   return TRUE;
+   return true;
 
 } /* End MSGLOG_RunChildFuncCmd() */
 
@@ -147,11 +148,12 @@ boolean MSGLOG_RunChildFuncCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
 ** Notes:
 **   1. See file prologue for logging/playback logic.
 */
-boolean MSGLOG_StartLogCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
+bool MSGLOG_StartLogCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr)
 {
    
-   int32   SbStatus;
-   boolean RetStatus = FALSE;
+   bool   RetStatus = false;
+   int32  SysStatus;
+   os_err_name_t OsErrStr;
    MSGLOG_StartLogCmdMsg_t* StartLog = (MSGLOG_StartLogCmdMsg_t*)MsgPtr;
       
    if (MsgLog->LogEna)
@@ -164,36 +166,37 @@ boolean MSGLOG_StartLogCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
       StopPlaybk();
    }
 
-   SbStatus = CFE_SB_Subscribe(StartLog->MsgId, MsgLog->MsgPipe);
+   SysStatus = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(StartLog->MsgId), MsgLog->MsgPipe);
 
-   if (SbStatus == CFE_SUCCESS)
+   if (SysStatus == CFE_SUCCESS)
    {
       
       MsgLog->LogCnt = 0;
       MsgLog->MsgId  = StartLog->MsgId;
       CreateFilename();
 
-      MsgLog->FileHandle = OS_creat(MsgLog->Filename, OS_WRITE_ONLY);
+      SysStatus = OS_OpenCreate(&MsgLog->FileHandle, MsgLog->Filename, OS_FILE_FLAG_CREATE, OS_READ_WRITE);
 
-      if (MsgLog->FileHandle >= OS_FS_SUCCESS)
+      if (SysStatus == OS_SUCCESS)
       {
       
-         RetStatus      = TRUE;
-         MsgLog->LogEna = TRUE;
+         RetStatus      = true;
+         MsgLog->LogEna = true;
 
          CFE_EVS_SendEvent (MSGLOG_START_LOG_CMD_EID,
-                            CFE_EVS_INFORMATION, "Created new log file %s with a maximum of %d entries",
+                            CFE_EVS_EventType_INFORMATION, "Created new log file %s with a maximum of %d entries",
                             MsgLog->Filename, MsgLog->Tbl.Data.File.EntryCnt);
 
       }
       else
       {
          
-         CFE_SB_Unsubscribe(MsgLog->MsgId, MsgLog->MsgPipe);
+         CFE_SB_Unsubscribe(CFE_SB_ValueToMsgId(MsgLog->MsgId), MsgLog->MsgPipe);
          
-         CFE_EVS_SendEvent (MSGLOG_START_LOG_CMD_EID, CFE_EVS_ERROR, 
-                            "Start message log rejected. Error creating new log file %s. Return status = 0x%4X",
-                            MsgLog->Filename, MsgLog->FileHandle);         
+         OS_GetErrorName(SysStatus, &OsErrStr);
+         CFE_EVS_SendEvent (MSGLOG_START_LOG_CMD_EID, CFE_EVS_EventType_ERROR, 
+                            "Start message log rejected. Error creating new log file %s. Status = %s",
+                            MsgLog->Filename, OsErrStr);         
       
       }
 
@@ -201,9 +204,9 @@ boolean MSGLOG_StartLogCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
    } /* End if SB subscribe */
    else {
    
-      CFE_EVS_SendEvent (MSGLOG_START_LOG_CMD_EID, CFE_EVS_ERROR,
+      CFE_EVS_SendEvent (MSGLOG_START_LOG_CMD_EID, CFE_EVS_EventType_ERROR,
                          "Start message log rejected. SB message 0x%04X subscription failed, Status = 0x%04X",
-                         StartLog->MsgId, SbStatus);
+                         StartLog->MsgId, SysStatus);
    
    }
    
@@ -216,24 +219,20 @@ boolean MSGLOG_StartLogCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
 ** Function: MSGLOG_StopLogCmd
 **
 */
-boolean MSGLOG_StopLogCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
+bool MSGLOG_StopLogCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr)
 {
    
    if (MsgLog->LogEna)
    {
-         
       StopLog();
-      
    }
    else
    {
-   
-      CFE_EVS_SendEvent (MSGLOG_STOP_LOG_CMD_EID, CFE_EVS_INFORMATION,
+      CFE_EVS_SendEvent (MSGLOG_STOP_LOG_CMD_EID, CFE_EVS_EventType_INFORMATION,
                          "Stop log command received with no log in progress");
-   
    }
    
-   return TRUE;
+   return true;
    
 } /* End MSGLOG_StopLogCmd() */
 
@@ -244,10 +243,13 @@ boolean MSGLOG_StopLogCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
 ** Notes:
 **   1. See file prologue for logging/playback logic.
 */
-boolean MSGLOG_StartPlaybkCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
+bool MSGLOG_StartPlaybkCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr)
 {
    
-   boolean RetStatus = FALSE;
+   bool   RetStatus = false;
+   int32  SysStatus;
+
+   os_err_name_t OsErrStr;
    FileUtil_FileInfo_t FileInfo;
    
 
@@ -261,45 +263,54 @@ boolean MSGLOG_StartPlaybkCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
       
       if (MsgLog->LogCnt > 0)
       {
+OS_printf("Before FileUtil_GetFileInfo()\n");
+         FileInfo = FileUtil_GetFileInfo(MsgLog->Filename, OS_MAX_PATH_LEN, false);
+OS_printf("After FileUtil_GetFileInfo()\n");
 
-         FileInfo = FileUtil_GetFileInfo(MsgLog->Filename, OS_MAX_PATH_LEN, FALSE);
-          
          if (FILEUTIL_FILE_EXISTS(FileInfo.State))
          {
 
-            RetStatus           = TRUE;
-            MsgLog->PlaybkEna   = TRUE;
-            MsgLog->PlaybkCnt   = 0;
-            MsgLog->PlaybkDelay = 0;
-            MsgLog->FileHandle  = OS_open(MsgLog->Filename, OS_READ_ONLY, 0);
+            SysStatus = OS_OpenCreate(&MsgLog->FileHandle, MsgLog->Filename, OS_FILE_FLAG_NONE, OS_READ_ONLY);
+
+            if (SysStatus == OS_SUCCESS)
+            {
+               RetStatus           = true;
+               MsgLog->PlaybkEna   = true;
+               MsgLog->PlaybkCnt   = 0;
+               MsgLog->PlaybkDelay = 0;
             
-            CFE_EVS_SendEvent (MSGLOG_START_PLAYBK_CMD_EID, CFE_EVS_INFORMATION,
-                              "Playback file %s started with a %d cycle delay between updates",
-                              MsgLog->Filename, MsgLog->Tbl.Data.PlaybkDelay);
-         
+               CFE_EVS_SendEvent (MSGLOG_START_PLAYBK_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                                  "Playback file %s started with a %d cycle delay between updates",
+                                  MsgLog->Filename, MsgLog->Tbl.Data.PlaybkDelay);
+            }
+            else
+            {
+               OS_GetErrorName(SysStatus, &OsErrStr);
+               CFE_EVS_SendEvent (MSGLOG_START_PLAYBK_CMD_EID, CFE_EVS_EventType_ERROR,
+                                  "Start playback failed. Error opening file %s. Status = %s",
+                                 MsgLog->Filename, OsErrStr);
+            }
          
          } /* End if file exists */
          else
          {
-         
-            CFE_EVS_SendEvent (MSGLOG_START_PLAYBK_CMD_EID, CFE_EVS_ERROR,
-                              "Start playback failed. Message log file does not exist.");
-
+            CFE_EVS_SendEvent (MSGLOG_START_PLAYBK_CMD_EID, CFE_EVS_EventType_ERROR,
+                              "Start playback failed. Message log file does not exist");
          }
       
       } /* MsgLog->LogCnt > 0 */
       else
       {
          
-         CFE_EVS_SendEvent (MSGLOG_START_PLAYBK_CMD_EID, CFE_EVS_ERROR,
+         CFE_EVS_SendEvent (MSGLOG_START_PLAYBK_CMD_EID, CFE_EVS_EventType_ERROR,
                             "Start playback failed. Message log count is zero");
       }
    } /* End if playback not in progress */ 
    else
    {
 
-      CFE_EVS_SendEvent (MSGLOG_START_PLAYBK_CMD_EID, CFE_EVS_ERROR,
-                         "Start playback ignored. Playback already in progress.");
+      CFE_EVS_SendEvent (MSGLOG_START_PLAYBK_CMD_EID, CFE_EVS_EventType_ERROR,
+                         "Start playback ignored. Playback already in progress");
 
    }
    
@@ -312,24 +323,20 @@ boolean MSGLOG_StartPlaybkCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
 ** Function: MSGLOG_StopPlaybkCmd
 **
 */
-boolean MSGLOG_StopPlaybkCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr)
+bool MSGLOG_StopPlaybkCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr)
 {
    
    if (MsgLog->PlaybkEna)
    {
-         
       StopPlaybk();
-      
    }
    else
    {
-   
-      CFE_EVS_SendEvent (MSGLOG_STOP_LOG_CMD_EID, CFE_EVS_INFORMATION,
+      CFE_EVS_SendEvent (MSGLOG_STOP_LOG_CMD_EID, CFE_EVS_EventType_INFORMATION,
                          "Stop playback command received with no playback in progress");
-   
    }
    
-   return TRUE;
+   return true;
    
 } /* End MSGLOG_StopPlaybkCmd() */
 
@@ -349,7 +356,7 @@ static void CreateFilename(void)
    int  i;
    char MsgIdStr[16];
 
-   CFE_EVS_SendEvent (MSGLOG_START_LOG_CMD_EID, CFE_EVS_DEBUG,
+   CFE_EVS_SendEvent (MSGLOG_START_LOG_CMD_EID, CFE_EVS_EventType_DEBUG,
                       "CreateFilename using table values: %s,%s,%d",
                       MsgLog->Tbl.Data.File.PathBaseName, 
                       MsgLog->Tbl.Data.File.Extension,
@@ -372,32 +379,34 @@ static void CreateFilename(void)
 /******************************************************************************
 ** Functions: LogMessages
 **
-** Read messages from SB, convert header to hex text, and write it to
-** log file.
+** Read messages from SB, convert ApId and Sequence count to hex text, and 
+** write them to a log file.
 */
 static void LogMessages(void)
 {
    
-   int32         Status;
-   CFE_SB_Msg_t  *MsgPtr;
-   uint8         MsgHdrInt[6];
-   char          MsgHdrStr[MSGLOG_PRI_HDR_HEX_CHAR+1];  /* '+1' for string terminator */
+   int32  SysStatus;
+   char   MsgLogText[MSGLOG_TEXT_LEN];
+   
+   CFE_SB_Buffer_t         *SbBufPtr;
+   CFE_SB_MsgId_t           MsgId;
+   CFE_MSG_SequenceCount_t  SeqCnt;      
+         
    
    
    do
    {
    
-      Status = CFE_SB_RcvMsg(&MsgPtr, MsgLog->MsgPipe, CFE_SB_POLL);
+      SysStatus = CFE_SB_ReceiveBuffer(&SbBufPtr, MsgLog->MsgPipe, CFE_SB_POLL);
 
-      if (Status == CFE_SUCCESS)
+      if (SysStatus == CFE_SUCCESS)
       {
          
-         memcpy(MsgHdrInt,MsgPtr,6);
-         sprintf(MsgHdrStr," %02X%02X %02X%02X %02X%02X\n",  /* Must be MSGLOG_PRI_HDR_HEX_CHAR in length */
-                 MsgHdrInt[0],MsgHdrInt[1],MsgHdrInt[2],
-                 MsgHdrInt[3],MsgHdrInt[4],MsgHdrInt[5]);
+         CFE_MSG_GetMsgId(&SbBufPtr->Msg, &MsgId);
+         CFE_MSG_GetSequenceCount(&SbBufPtr->Msg, &SeqCnt);
 
-         Status = OS_write(MsgLog->FileHandle, MsgHdrStr, MSGLOG_PRI_HDR_HEX_CHAR);
+         sprintf(MsgLogText,"0x%04X 0x%04X \n", CFE_SB_MsgIdToValue(MsgId), SeqCnt);
+         SysStatus = OS_write(MsgLog->FileHandle, MsgLogText, MSGLOG_TEXT_LEN);
 
          MsgLog->LogCnt++;
          if (MsgLog->LogCnt >= MsgLog->Tbl.Data.File.EntryCnt)
@@ -407,7 +416,7 @@ static void LogMessages(void)
       
       } /* End SB read */
       
-   } while((Status == CFE_SUCCESS) && MsgLog->LogEna);
+   } while((SysStatus == CFE_SUCCESS) && MsgLog->LogEna);
       
 
 } /* End LogMessages() */
@@ -434,15 +443,15 @@ static void PlaybkMessages(void)
    if (MsgLog->PlaybkCnt < MsgLog->LogCnt)
    {
    
-      SysStatus = OS_read(MsgLog->FileHandle, MsgLog->PlaybkPkt.HdrTxt, MSGLOG_PRI_HDR_HEX_CHAR);
+      SysStatus = OS_read(MsgLog->FileHandle, MsgLog->PlaybkPkt.MsgText, MSGLOG_TEXT_LEN);
 
-      if (SysStatus == MSGLOG_PRI_HDR_HEX_CHAR)
+      if (SysStatus == MSGLOG_TEXT_LEN)
       {
       
          MsgLog->PlaybkPkt.LogFileEntry = MsgLog->PlaybkCnt;
-         
-         CFE_SB_TimeStampMsg((CFE_SB_Msg_t *) &(MsgLog->PlaybkPkt));
-         CFE_SB_SendMsg((CFE_SB_Msg_t *) &(MsgLog->PlaybkPkt));
+        
+         CFE_SB_TimeStampMsg(CFE_MSG_PTR(MsgLog->PlaybkPkt.TlmHeader));
+         CFE_SB_TransmitMsg(CFE_MSG_PTR(MsgLog->PlaybkPkt.TlmHeader), true);
 
          MsgLog->PlaybkCnt++;
          if (MsgLog->PlaybkCnt >= MsgLog->LogCnt)
@@ -477,10 +486,10 @@ static void StopLog(void)
 {
    
    OS_close(MsgLog->FileHandle);
-   CFE_SB_Unsubscribe(MsgLog->MsgId, MsgLog->MsgPipe);
-   MsgLog->LogEna = FALSE;
+   CFE_SB_Unsubscribe(CFE_SB_ValueToMsgId(MsgLog->MsgId), MsgLog->MsgPipe);
+   MsgLog->LogEna = false;
    
-   CFE_EVS_SendEvent (MSGLOG_STOP_LOG_CMD_EID, CFE_EVS_INFORMATION,
+   CFE_EVS_SendEvent (MSGLOG_STOP_LOG_CMD_EID, CFE_EVS_EventType_INFORMATION,
                       "Logging stopped. Closed log file %s with %d entries", 
                       MsgLog->Filename, MsgLog->LogCnt);
 
@@ -492,21 +501,18 @@ static void StopLog(void)
 **
 ** Notes:
 **   1. Assumes caller checked if playback was in progress. 
-**   2. Clears playback state data and sends a final playback telemetry packet
+**   2. Clears playback state data
 */
 static void StopPlaybk(void)
 {
    
    OS_close(MsgLog->FileHandle);
    
-   MsgLog->PlaybkEna = FALSE;
+   MsgLog->PlaybkEna = false;
    MsgLog->PlaybkPkt.LogFileEntry = 0;
-   memset(MsgLog->PlaybkPkt.HdrTxt,'\0',MSGLOG_PRI_HDR_HEX_CHAR);
+   memset(MsgLog->PlaybkPkt.MsgText, '\0', MSGLOG_TEXT_LEN);
 
-   CFE_SB_TimeStampMsg((CFE_SB_Msg_t *) &(MsgLog->PlaybkPkt));
-   CFE_SB_SendMsg((CFE_SB_Msg_t *) &(MsgLog->PlaybkPkt));
-   
-   CFE_EVS_SendEvent (MSGLOG_STOP_PLAYBK_CMD_EID, CFE_EVS_INFORMATION,
+   CFE_EVS_SendEvent (MSGLOG_STOP_PLAYBK_CMD_EID, CFE_EVS_EventType_INFORMATION,
                       "Playback stopped. Closed log file %s", MsgLog->Filename);
 
 }/* End StopPlaybk() */

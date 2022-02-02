@@ -93,7 +93,7 @@ typedef struct
    */
    
    const char*  AppName;
-   boolean      Loaded;   /* Has entire table been loaded? */
+   bool         Loaded;   /* Has entire table been loaded? */
    uint8        LastLoadStatus;
    uint16       LastLoadCnt;
    
@@ -119,7 +119,7 @@ typedef struct
 **      registered with the table manager.
 **
 */
-void MSGLOGTBL_Constructor(MSGLOGTBL_Class_t* TblObj, INITBL_Class_t* IniTbl);
+void MSGLOGTBL_Constructor(MSGLOGTBL_Class_t* TblObj, const INITBL_Class_t* IniTbl);
 
 
 /******************************************************************************
@@ -144,7 +144,7 @@ void MSGLOGTBL_ResetStatus(void);
 **     the app framework table manager.
 **
 */
-boolean MSGLOGTBL_LoadCmd(TBLMGR_Tbl_t* Tbl, uint8 LoadType, const char* Filename);
+bool MSGLOGTBL_LoadCmd(TBLMGR_Tbl_t* Tbl, uint8 LoadType, const char* Filename);
 
 
 /******************************************************************************
@@ -158,7 +158,7 @@ boolean MSGLOGTBL_LoadCmd(TBLMGR_Tbl_t* Tbl, uint8 LoadType, const char* Filenam
 **     the app framework table manager.
 **
 */
-boolean MSGLOGTBL_DumpCmd(TBLMGR_Tbl_t* Tbl, uint8 DumpType, const char* Filename);
+bool MSGLOGTBL_DumpCmd(TBLMGR_Tbl_t* Tbl, uint8 DumpType, const char* Filename);
 
 
 #endif /* _msglogtbl_ */

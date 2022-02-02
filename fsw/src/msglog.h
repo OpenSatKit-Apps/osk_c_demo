@@ -42,7 +42,7 @@
 /* 
 ** Even number of bytes since hex char array used in tlm pkt definition
 */
-#define MSGLOG_PRI_HDR_HEX_CHAR  16  
+#define MSGLOG_TEXT_LEN  16  
 
 /*
 ** Event Message IDs
@@ -70,18 +70,18 @@
 typedef struct
 {
 
-   uint8   Header[CFE_SB_CMD_HDR_SIZE];
+   CFE_MSG_CommandHeader_t  CmdHeader;
    uint16  MsgId;
 
 } MSGLOG_StartLogCmdMsg_t;
-#define MSGLOG_START_LOG_CMD_DATA_LEN     ((sizeof(MSGLOG_StartLogCmdMsg_t) - CFE_SB_CMD_HDR_SIZE))
+#define MSGLOG_START_LOG_CMD_DATA_LEN     (sizeof(MSGLOG_StartLogCmdMsg_t) - sizeof(CFE_MSG_CommandHeader_t))
 #define MSGLOG_STOP_LOG_CMD_DATA_LEN      PKTUTIL_NO_PARAM_CMD_DATA_LEN
 
 #define MSGLOG_START_PLAYBK_CMD_DATA_LEN  PKTUTIL_NO_PARAM_CMD_DATA_LEN
 #define MSGLOG_STOP_PLAYBK_CMD_DATA_LEN   PKTUTIL_NO_PARAM_CMD_DATA_LEN
 
-#define MSGLOG_PERIODIC_CMD_DATA_LEN      PKTUTIL_NO_PARAM_CMD_DATA_LEN
-
+#define MSGLOG_RUN_CHILD_CMD_LEN          PKTUTIL_NO_PARAM_CMD_LEN
+#define MSGLOG_RUN_CHILD_CMD_DATA_LEN     PKTUTIL_NO_PARAM_CMD_DATA_LEN
 
 /******************************************************************************
 ** Telmetery Packets
@@ -95,9 +95,9 @@ typedef struct
 typedef struct
 {
 
-   uint8   Header[CFE_SB_TLM_HDR_SIZE];
-   uint16  LogFileEntry;                     /* Log file entry being telemetered  */
-   char    HdrTxt[MSGLOG_PRI_HDR_HEX_CHAR];  /* CCSDS v1.0 primary header content */
+   CFE_MSG_TelemetryHeader_t TlmHeader;
+   uint16  LogFileEntry;                  /* Log file entry being telemetered  */
+   char    MsgText[MSGLOG_TEXT_LEN];      /* ID & sequence count text          */
 
 } MSGLOG_PlaybkPkt_t;
 
@@ -126,22 +126,22 @@ typedef struct
    ** Class State Data
    */
 
-   boolean  LogEna;
-   uint16   LogCnt;
+   bool    LogEna;
+   uint16  LogCnt;
    
-   boolean  PlaybkEna;
-   uint16   PlaybkCnt;
-   uint16   PlaybkDelay;
+   bool    PlaybkEna;
+   uint16  PlaybkCnt;
+   uint16  PlaybkDelay;
    
-   uint16   MsgId;
-   int32    FileHandle;
-   char     Filename[OS_MAX_PATH_LEN];
+   uint16     MsgId;
+   osal_id_t  FileHandle;
+   char       Filename[OS_MAX_PATH_LEN];
     
    /*
    ** Contained Objects
    */
 
-   MSGLOGTBL_Class_t   Tbl;
+   MSGLOGTBL_Class_t  Tbl;
    
 } MSGLOG_Class_t;
 
@@ -185,35 +185,35 @@ void MSGLOG_ResetStatus(void);
 **      mechanism for the parent app to periodically call a child task function.
 **
 */
-boolean MSGLOG_RunChildFuncCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr);
+bool MSGLOG_RunChildFuncCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr);
 
 
 /******************************************************************************
 ** Function: MSGLOG_StartLogCmd
 **
 */
-boolean MSGLOG_StartLogCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr);
+bool MSGLOG_StartLogCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr);
 
 
 /******************************************************************************
 ** Function: MSGLOG_StopLogCmd
 **
 */
-boolean MSGLOG_StopLogCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr);
+bool MSGLOG_StopLogCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr);
 
 
 /******************************************************************************
 ** Function: MSGLOG_StartPlaybkCmd
 **
 */
-boolean MSGLOG_StartPlaybkCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr);
+bool MSGLOG_StartPlaybkCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr);
 
 
 /******************************************************************************
 ** Function: MSGLOG_StopPlaybkCmd
 **
 */
-boolean MSGLOG_StopPlaybkCmd(void* DataObjPtr, const CFE_SB_MsgPtr_t MsgPtr);
+bool MSGLOG_StopPlaybkCmd(void* DataObjPtr, const CFE_MSG_Message_t *MsgPtr);
 
 
 #endif /* _msglog_ */

@@ -63,41 +63,41 @@
 typedef struct
 {
 
-   uint8    Header[CFE_SB_TLM_HDR_SIZE];
-
+   CFE_MSG_TelemetryHeader_t TlmHeader;
+    
    /*
    ** CMDMGR Data
    */
-   uint16   ValidCmdCnt;
-   uint16   InvalidCmdCnt;
+   uint16  ValidCmdCnt;
+   uint16  InvalidCmdCnt;
  
    /*
    ** CHILDMGR Data
    */
-   uint16   ChildValidCmdCnt;
-   uint16   ChildInvalidCmdCnt;
+   uint16  ChildValidCmdCnt;
+   uint16  ChildInvalidCmdCnt;
  
    /*
    ** Table Data 
    ** - Loaded with status from the last table action 
    */
 
-   uint8    LastTblAction;
-   uint8    LastTblActionStatus;
+   uint8   LastTblAction;
+   uint8   LastTblActionStatus;
 
    
    /*
    ** MSGLOG Data
    */
 
-   boolean  MsgLogEna;
-   boolean  MsgPlaybkEna;
+   bool    MsgLogEna;
+   bool    MsgPlaybkEna;
 
-   uint16   MsgLogCnt;      
-   char     MsgLogFilename[OS_MAX_PATH_LEN];
+   uint16  MsgLogCnt;      
+   char    MsgLogFilename[OS_MAX_PATH_LEN];
 
 
-} OS_PACK OSK_C_DEMO_HkPkt_t;
+} OSK_C_DEMO_HkPkt_t;
 #define OSK_C_DEMO_TLM_HK_LEN sizeof (OSK_C_DEMO_HkPkt_t)
 
 
@@ -133,12 +133,12 @@ typedef struct
    ** OSK_C_DEMO State & Contained Objects
    */ 
            
-   uint32          PerfId;
-   CFE_SB_MsgId_t  CmdMid;
-   CFE_SB_MsgId_t  ExecuteMid;
-   CFE_SB_MsgId_t  SendHkMid;
+   uint32           PerfId;
+   CFE_SB_MsgId_t   CmdMid;
+   CFE_SB_MsgId_t   ExecuteMid;
+   CFE_SB_MsgId_t   SendHkMid;
    
-   MSGLOG_Class_t   MsgLog;
+   MSGLOG_Class_t  MsgLog;
    
 } OSK_C_DEMO_Class_t;
 
@@ -166,14 +166,14 @@ void OSK_C_DEMO_AppMain(void);
 ** Function: OSK_C_DEMO_NoOpCmd
 **
 */
-boolean OSK_C_DEMO_NoOpCmd(void* ObjDataPtr, const CFE_SB_MsgPtr_t MsgPtr);
+bool OSK_C_DEMO_NoOpCmd(void* ObjDataPtr, const CFE_MSG_Message_t *MsgPtr);
 
 
 /******************************************************************************
 ** Function: OSK_C_DEMO_ResetAppCmd
 **
 */
-boolean OSK_C_DEMO_ResetAppCmd(void* ObjDataPtr, const CFE_SB_MsgPtr_t MsgPtr);
+bool OSK_C_DEMO_ResetAppCmd(void* ObjDataPtr, const CFE_MSG_Message_t *MsgPtr);
 
 
 #endif /* _osk_c_demo_ */

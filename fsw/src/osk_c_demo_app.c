@@ -27,6 +27,7 @@
 
 #include <string.h>
 #include "osk_c_demo_app.h"
+#include "osk_c_demo_msgids.h"
 
 /***********************/
 /** Macro Definitions **/
@@ -74,38 +75,28 @@ OSK_C_DEMO_Class_t  OskCDemo;
 void OSK_C_DEMO_AppMain(void)
 {
 
-   int32  Status    = CFE_SEVERITY_ERROR;
-   uint32 RunStatus = CFE_ES_APP_ERROR;
-
-   Status = CFE_ES_RegisterApp();
+   uint32 RunStatus = CFE_ES_RunStatus_APP_ERROR;
    
-   if (Status == CFE_SUCCESS)
+   CFE_EVS_Register(NULL, 0, CFE_EVS_NO_FILTER);
+
+   if (InitApp() == CFE_SUCCESS)      /* Performs initial CFE_ES_PerfLogEntry() call */
    {
-
-      CFE_EVS_Register(NULL, 0, CFE_EVS_BINARY_FILTER);
-
-      Status = InitApp();      /* Performs initial CFE_ES_PerfLogEntry() call */
-   
-      if (Status == CFE_SUCCESS)
-      {
-         RunStatus = CFE_ES_APP_RUN;  
-      }
-   
-   } /* End if RegisterApp() success */
+      RunStatus = CFE_ES_RunStatus_APP_RUN; 
+   }
    
    /*
    ** Main process loop
    */
    while (CFE_ES_RunLoop(&RunStatus))
    {
-
-      RunStatus = ProcessCommands();
+      
+      RunStatus = ProcessCommands();  /* Pends indefinitely & manages CFE_ES_PerfLogEntry() calls */
       
    } /* End CFE_ES_RunLoop */
 
-   CFE_ES_WriteToSysLog("OSK_C_DEMO App terminating, err = 0x%08X\n", Status);   /* Use SysLog, events may not be working */
+   CFE_ES_WriteToSysLog("OSK_C_DEMO App terminating, run status = 0x%08X\n", RunStatus);   /* Use SysLog, events may not be working */
 
-   CFE_EVS_SendEvent(OSK_C_DEMO_EXIT_EID, CFE_EVS_CRITICAL, "OSK_C_DEMO App terminating, err = 0x%08X", Status);
+   CFE_EVS_SendEvent(OSK_C_DEMO_EXIT_EID, CFE_EVS_EventType_CRITICAL, "OSK_C_DEMO App terminating, run status = 0x%08X", RunStatus);
 
    CFE_ES_ExitApp(RunStatus);  /* Let cFE kill the task (and any child tasks) */
 
@@ -116,14 +107,14 @@ void OSK_C_DEMO_AppMain(void)
 ** Function: OSK_C_DEMO_NoOpCmd
 **
 */
-boolean OSK_C_DEMO_NoOpCmd(void* ObjDataPtr, const CFE_SB_MsgPtr_t MsgPtr)
+bool OSK_C_DEMO_NoOpCmd(void* ObjDataPtr, const CFE_MSG_Message_t *MsgPtr)
 {
 
-   CFE_EVS_SendEvent (OSK_C_DEMO_NOOP_EID, CFE_EVS_INFORMATION,
+   CFE_EVS_SendEvent (OSK_C_DEMO_NOOP_EID, CFE_EVS_EventType_INFORMATION,
                       "No operation command received for OSK_C_DEMO App version %d.%d.%d",
                       OSK_C_DEMO_MAJOR_VER, OSK_C_DEMO_MINOR_VER, OSK_C_DEMO_PLATFORM_REV);
 
-   return TRUE;
+   return true;
 
 
 } /* End OSK_C_DEMO_NoOpCmd() */
@@ -137,7 +128,7 @@ boolean OSK_C_DEMO_NoOpCmd(void* ObjDataPtr, const CFE_SB_MsgPtr_t MsgPtr)
 **      reentrant. Applications use the singleton pattern and store a
 **      reference pointer to the object data during construction.
 */
-boolean OSK_C_DEMO_ResetAppCmd(void* ObjDataPtr, const CFE_SB_MsgPtr_t MsgPtr)
+bool OSK_C_DEMO_ResetAppCmd(void* ObjDataPtr, const CFE_MSG_Message_t *MsgPtr)
 {
 
    CMDMGR_ResetStatus(CMDMGR_OBJ);
@@ -146,7 +137,7 @@ boolean OSK_C_DEMO_ResetAppCmd(void* ObjDataPtr, const CFE_SB_MsgPtr_t MsgPtr)
    
    MSGLOG_ResetStatus();
 	  
-   return TRUE;
+   return true;
 
 } /* End OSK_C_DEMO_ResetAppCmd() */
 
@@ -158,7 +149,7 @@ boolean OSK_C_DEMO_ResetAppCmd(void* ObjDataPtr, const CFE_SB_MsgPtr_t MsgPtr)
 static void SendHousekeepingPkt(void)
 {
 
-   /* Good design practice in case app expands to more than on etable */
+   /* Good design practice in case app expands to more than one table */
    const TBLMGR_Tbl_t* LastTbl = TBLMGR_GetLastTblStatus(TBLMGR_OBJ);
 
    /*
@@ -190,8 +181,8 @@ static void SendHousekeepingPkt(void)
    
    strncpy(OskCDemo.HkPkt.MsgLogFilename, OskCDemo.MsgLog.Filename, OS_MAX_PATH_LEN);
 
-   CFE_SB_TimeStampMsg((CFE_SB_Msg_t *) &OskCDemo.HkPkt);
-   CFE_SB_SendMsg((CFE_SB_Msg_t *) &OskCDemo.HkPkt);
+   CFE_SB_TimeStampMsg(CFE_MSG_PTR(OskCDemo.HkPkt.TlmHeader));
+   CFE_SB_TransmitMsg(CFE_MSG_PTR(OskCDemo.HkPkt.TlmHeader), true);
 
 } /* End SendHousekeepingPkt() */
 
@@ -217,9 +208,9 @@ static int32 InitApp(void)
       OskCDemo.PerfId  = INITBL_GetIntConfig(INITBL_OBJ, CFG_APP_PERF_ID);
       CFE_ES_PerfLogEntry(OskCDemo.PerfId);
 
-      OskCDemo.CmdMid     = (CFE_SB_MsgId_t)INITBL_GetIntConfig(INITBL_OBJ, CFG_CMD_MID);
-      OskCDemo.ExecuteMid = (CFE_SB_MsgId_t)INITBL_GetIntConfig(INITBL_OBJ, CFG_EXECUTE_MID);
-      OskCDemo.SendHkMid  = (CFE_SB_MsgId_t)INITBL_GetIntConfig(INITBL_OBJ, CFG_SEND_HK_MID);
+      OskCDemo.CmdMid     = CFE_SB_ValueToMsgId(INITBL_GetIntConfig(INITBL_OBJ, CFG_CMD_MID));
+      OskCDemo.ExecuteMid = CFE_SB_ValueToMsgId(INITBL_GetIntConfig(INITBL_OBJ, CFG_EXECUTE_MID));
+      OskCDemo.SendHkMid  = CFE_SB_ValueToMsgId(INITBL_GetIntConfig(INITBL_OBJ, CFG_SEND_HK_MID));
 
       /* Child Manager constructor sends error events */    
       ChildTaskInit.TaskName  = INITBL_GetStrConfig(INITBL_OBJ, CFG_CHILD_NAME);
@@ -275,29 +266,36 @@ static int32 InitApp(void)
       ** Alternative commands don't increment the main command counters, but they do increment the child command counters.
       ** This "command" is used by the app's main loop to perform periodic processing 
       */
-      CMDMGR_RegisterFuncAltCnt(CMDMGR_OBJ, MSGLOG_RUN_CHILD_ALT_CMD_FC, CHILDMGR_OBJ, CHILDMGR_InvokeChildCmd, PKTUTIL_NO_PARAM_CMD_DATA_LEN);
+      CMDMGR_RegisterFuncAltCnt(CMDMGR_OBJ, MSGLOG_RUN_CHILD_ALT_CMD_FC, CHILDMGR_OBJ, CHILDMGR_InvokeChildCmd, MSGLOG_RUN_CHILD_CMD_DATA_LEN);
       CHILDMGR_RegisterFunc(CHILDMGR_OBJ, MSGLOG_RUN_CHILD_ALT_CMD_FC, MSGLOG_OBJ, MSGLOG_RunChildFuncCmd);
 
       /* Contained table object must be constructed prior to table registration because its table load function is called */
-	   TBLMGR_Constructor(TBLMGR_OBJ);
+      TBLMGR_Constructor(TBLMGR_OBJ);
       TBLMGR_RegisterTblWithDef(TBLMGR_OBJ, MSGLOGTBL_LoadCmd, MSGLOGTBL_DumpCmd, INITBL_GetStrConfig(INITBL_OBJ, CFG_TBL_LOAD_FILE));
 
       /*
       ** Initialize app messages 
       */
-      CFE_SB_InitMsg((CFE_SB_MsgPtr_t)&OskCDemo.MsgLogRunChildFuncCmd, (CFE_SB_MsgId_t)INITBL_GetIntConfig(INITBL_OBJ, CFG_EXECUTE_MID), sizeof(PKTUTIL_NoParamCmdMsg_t), TRUE);
-      CFE_SB_SetCmdCode((CFE_SB_MsgPtr_t)&OskCDemo.MsgLogRunChildFuncCmd, MSGLOG_RUN_CHILD_ALT_CMD_FC);
-      CFE_SB_GenerateChecksum((CFE_SB_MsgPtr_t)&OskCDemo.MsgLogRunChildFuncCmd);
 
-      CFE_SB_InitMsg(&OskCDemo.HkPkt, (CFE_SB_MsgId_t)INITBL_GetIntConfig(INITBL_OBJ, CFG_HK_TLM_MID), OSK_C_DEMO_TLM_HK_LEN, TRUE);
+
+      CFE_MSG_Init(CFE_MSG_PTR(OskCDemo.MsgLogRunChildFuncCmd.CmdHeader), CFE_SB_ValueToMsgId(INITBL_GetIntConfig(INITBL_OBJ, CFG_EXECUTE_MID)), 
+                   sizeof(OskCDemo.MsgLogRunChildFuncCmd.CmdHeader)-2);  //todo: Why is user data length 2 with just size of header?
+      CFE_MSG_SetFcnCode(CFE_MSG_PTR(OskCDemo.MsgLogRunChildFuncCmd.CmdHeader), (CFE_MSG_FcnCode_t)MSGLOG_RUN_CHILD_ALT_CMD_FC);
+      CFE_MSG_GenerateChecksum(CFE_MSG_PTR(OskCDemo.MsgLogRunChildFuncCmd.CmdHeader));
+      CFE_MSG_Init(CFE_MSG_PTR(OskCDemo.HkPkt.TlmHeader), CFE_SB_ValueToMsgId(INITBL_GetIntConfig(INITBL_OBJ, CFG_HK_TLM_MID)), OSK_C_DEMO_TLM_HK_LEN);
 
       /*
       ** Application startup event message
       */
-      CFE_EVS_SendEvent(OSK_C_DEMO_INIT_APP_EID, CFE_EVS_INFORMATION,
+      CFE_EVS_SendEvent(OSK_C_DEMO_INIT_APP_EID, CFE_EVS_EventType_INFORMATION,
                         "OSK_C_DEMO App Initialized. Version %d.%d.%d",
                         OSK_C_DEMO_MAJOR_VER, OSK_C_DEMO_MINOR_VER, OSK_C_DEMO_PLATFORM_REV);
-                        
+
+FileUtil_FileInfo_t FileInfo;
+OS_printf("Before FileUtil_GetFileInfo()\n");
+FileInfo = FileUtil_GetFileInfo("/cf/msg_0854.txt", OS_MAX_PATH_LEN, false);
+OS_printf("After FileUtil_GetFileInfo() File exists = %d\n",FILEUTIL_FILE_EXISTS(FileInfo.State));
+
    } /* End if CHILDMGR constructed */
    
    return(Status);
@@ -313,52 +311,49 @@ static int32 InitApp(void)
 static int32 ProcessCommands(void)
 {
    
-   int32           SbStatus;
-   int32           RetStatus = CFE_ES_APP_RUN;
-   CFE_SB_Msg_t*   CmdMsgPtr;
-   CFE_SB_MsgId_t  MsgId;
+   int32  RetStatus = CFE_ES_RunStatus_APP_RUN;
+   int32  SysStatus;
+
+   CFE_SB_Buffer_t* SbBufPtr;
+   CFE_SB_MsgId_t   MsgId = CFE_SB_INVALID_MSG_ID;
+
 
    CFE_ES_PerfLogExit(OskCDemo.PerfId);
-   SbStatus = CFE_SB_RcvMsg(&CmdMsgPtr, OskCDemo.CmdPipe, CFE_SB_PEND_FOREVER);
+   SysStatus = CFE_SB_ReceiveBuffer(&SbBufPtr, OskCDemo.CmdPipe, CFE_SB_PEND_FOREVER);
    CFE_ES_PerfLogEntry(OskCDemo.PerfId);
 
-   if (SbStatus == CFE_SUCCESS)
+   if (SysStatus == CFE_SUCCESS)
    {
+      SysStatus = CFE_MSG_GetMsgId(&SbBufPtr->Msg, &MsgId);
 
-      MsgId = CFE_SB_GetMsgId(CmdMsgPtr);
-
-      if (MsgId == OskCDemo.CmdMid)
+      if (SysStatus == CFE_SUCCESS)
       {
 
-         CMDMGR_DispatchFunc(CMDMGR_OBJ, CmdMsgPtr);
-            
-      } 
-      else if (MsgId == OskCDemo.ExecuteMid)
-      {
+         if (CFE_SB_MsgId_Equal(MsgId, OskCDemo.CmdMid))
+         {
+            CMDMGR_DispatchFunc(CMDMGR_OBJ, &SbBufPtr->Msg);
+         } 
+         else if (CFE_SB_MsgId_Equal(MsgId, OskCDemo.ExecuteMid))
+         {
+            CMDMGR_DispatchFunc(CMDMGR_OBJ, (CFE_MSG_Message_t *)&OskCDemo.MsgLogRunChildFuncCmd.CmdHeader);
+         }
+         else if (CFE_SB_MsgId_Equal(MsgId, OskCDemo.SendHkMid))
+         {   
+            SendHousekeepingPkt();
+         }
+         else
+         {   
+            CFE_EVS_SendEvent(OSK_C_DEMO_INVALID_MID_EID, CFE_EVS_EventType_ERROR,
+                              "Received invalid command packet, MID = 0x%08X", 
+                              CFE_SB_MsgIdToValue(MsgId));
+         }
 
-         CMDMGR_DispatchFunc(CMDMGR_OBJ, (CFE_SB_Msg_t*)&OskCDemo.MsgLogRunChildFuncCmd);
-
-      }
-      else if (MsgId == OskCDemo.SendHkMid)
-      {
-            
-         SendHousekeepingPkt();
-         
-      }
-      else
-      {
-            
-         CFE_EVS_SendEvent(OSK_C_DEMO_INVALID_MID_EID, CFE_EVS_ERROR,
-                           "Received invalid command packet,MID = 0x%4X",MsgId);
-      }
-
-   } /* End if SB received a packet */
+      } /* End if got message ID */
+   } /* End if received buffer */
    else
    {
-      
-      RetStatus = CFE_ES_APP_ERROR;
-      
-   } /* End if SB failure */
+      RetStatus = CFE_ES_RunStatus_APP_ERROR;
+   } 
 
    return RetStatus;
    
